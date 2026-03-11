@@ -1,0 +1,93 @@
+name: Export Processed CSVs to ClickUp
+
+on:
+  schedule:
+    - cron: "35 5 2 * *"
+    - cron: "35 5 16 11,12,1 *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "If true, validates files and prints plan without API calls"
+        required: false
+        default: true
+        type: boolean
+      period_granularity:
+        description: "Task naming period granularity"
+        required: false
+        default: "month"
+        type: choice
+        options:
+          - month
+          - week
+      status_name:
+        description: "Target ClickUp status"
+        required: false
+        default: "exported zisson data"
+        type: string
+      name_template:
+        description: "Task name template ({period}, {timestamp})"
+        required: false
+        default: "Zisson export {period}"
+        type: string
+      allow_existing_task:
+        description: "If true, reuse existing task with same name"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clickup-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Export to ClickUp
+        env:
+          CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
+          CLICKUP_AUTH_PREFIX: ${{ secrets.CLICKUP_AUTH_PREFIX }}
+          CLICKUP_LIST_ID: ${{ secrets.CLICKUP_LIST_ID }}
+        run: |
+          GRANULARITY="${{ inputs.period_granularity }}"
+          if [ -z "$GRANULARITY" ]; then GRANULARITY="month"; fi
+
+          STATUS_NAME="${{ inputs.status_name }}"
+          if [ -z "$STATUS_NAME" ]; then STATUS_NAME="exported zisson data"; fi
+
+          NAME_TEMPLATE="${{ inputs.name_template }}"
+          if [ -z "$NAME_TEMPLATE" ]; then NAME_TEMPLATE="Zisson export {period}"; fi
+
+          DRY_RUN="${{ inputs.dry_run }}"
+          if [ -z "$DRY_RUN" ]; then DRY_RUN="false"; fi
+
+          ALLOW_EXISTING="${{ inputs.allow_existing_task }}"
+          if [ -z "$ALLOW_EXISTING" ]; then ALLOW_EXISTING="true"; fi
+
+          CMD=(python scripts/clickup_export.py
+            --list-id "$CLICKUP_LIST_ID"
+            --csv-dir "data/processed"
+            --period-granularity "$GRANULARITY"
+            --status-name "$STATUS_NAME"
+            --name-template "$NAME_TEMPLATE"
+          )
+
+          if [ "$DRY_RUN" = "true" ]; then CMD+=(--dry-run); fi
+          if [ "$ALLOW_EXISTING" = "true" ]; then CMD+=(--allow-existing-task); fi
+
+          "${CMD[@]}"

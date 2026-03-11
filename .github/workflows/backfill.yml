@@ -26,6 +26,14 @@ on:
         required: false
         default: "UTC"
         type: string
+      target:
+        description: "sandbox (no repo/state impact) or production (commit + state update)"
+        required: false
+        default: "sandbox"
+        type: choice
+        options:
+          - sandbox
+          - production
 
 permissions:
   contents: write
@@ -53,18 +61,27 @@ jobs:
       - name: Run backfill
         env:
           ZISSON_API_TOKEN: ${{ secrets.ZISSON_API_TOKEN }}
-          ZISSON_AUTH_HEADER: ${{ secrets.ZISSON_AUTH_HEADER }}
-          ZISSON_AUTH_PREFIX: ${{ secrets.ZISSON_AUTH_PREFIX }}
+          ZISSON_AUTH_HEADER: ${{ secrets.ZISSON_AUTH_HEADER || 'Authorization' }}
+          ZISSON_AUTH_PREFIX: ${{ secrets.ZISSON_AUTH_PREFIX || 'Bearer' }}
         run: |
-          python scripts/zisson_sync.py \
+          CMD=(python scripts/zisson_sync.py \
             --mode backfill \
             --start-date "${{ inputs.start_date }}" \
             --end-date "${{ inputs.end_date }}" \
             --queues "${{ inputs.queue_selection }}" \
             --chunk-days "${{ inputs.chunk_days }}" \
-            --source-timezone "${{ inputs.source_timezone }}"
+            --source-timezone "${{ inputs.source_timezone }}")
+
+          if [ "${{ inputs.target }}" = "sandbox" ]; then
+            CMD+=(--data-dir "artifacts/backfill")
+            CMD+=(--state-file "state/sandbox_sync_state.json")
+            CMD+=(--skip-state-update)
+          fi
+
+          "${CMD[@]}"
 
       - name: Commit changed files
+        if: ${{ inputs.target == 'production' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -75,3 +92,11 @@ jobs:
           fi
           git commit -m "chore(data): backfill queue csv snapshots"
           git push
+
+      - name: Upload sandbox backfill CSVs
+        if: ${{ inputs.target == 'sandbox' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-sandbox-output
+          path: artifacts/backfill/*.csv
+          if-no-files-found: error

@@ -128,6 +128,15 @@ def parse_interval_start(interval: str, source_tz: ZoneInfo) -> datetime:
     return local_start.astimezone(timezone.utc)
 
 
+def is_supported_interval(interval: str) -> bool:
+    value = interval.strip()
+    if not value:
+        return False
+    if value.lower() == "total":
+        return False
+    return bool(re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}\s*-\s*\d{2}:\d{2}$", value))
+
+
 def build_headers() -> Dict[str, str]:
     api_token = _must_env("ZISSON_API_TOKEN")
     auth_header = _opt_env("ZISSON_AUTH_HEADER", "Authorization")
@@ -263,6 +272,9 @@ def fetch_points(
             offered = int(row.get("offeredCalls", 0) or 0)
 
             if not interval or not queue_desc:
+                continue
+            if not is_supported_interval(interval):
+                logging.debug("Skipping non-interval row for queue '%s': interval='%s'", queue_desc, interval)
                 continue
 
             dt_utc = parse_interval_start(interval, source_tz)

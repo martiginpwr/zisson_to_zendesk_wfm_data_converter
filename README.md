@@ -1,4 +1,4 @@
-﻿# Zisson Queue Volume Automation
+# Zisson Queue Volume Automation
 
 This project fetches 15-minute queue volume data from Zisson and generates per-queue CSV files in forecasting format.
 
@@ -27,6 +27,7 @@ Rules enforced by script:
 - `Backfill Queue CSVs` (`.github/workflows/backfill.yml`): manual, history load.
 - `Incremental Queue Sync` (`.github/workflows/sync.yml`): scheduled daily + manual.
 - `Test Queue Fetch` (`.github/workflows/test.yml`): manual test run, uploads CSV artifact, no commit.
+- `Export Processed CSVs to ClickUp` (`.github/workflows/clickup_export.yml`): scheduled export (monthly baseline + extra mid-month run in Nov-Jan) + manual dispatch.
 
 ## Queue selection input
 For manual workflows, `queue_selection` accepts comma-separated values using exact queue name or queue id from `config/queues.json`.
@@ -53,3 +54,17 @@ python scripts/zisson_sync.py --mode incremental
 ## Notes
 - If API `interval` values are not UTC-based, set `source_timezone` in workflow inputs (or `--source-timezone` locally).
 - CSV filenames are based on queue names with safe character normalization.
+
+## ClickUp export setup
+Required repository secrets:
+- `CLICKUP_API_TOKEN` (required)
+- `CLICKUP_LIST_ID` (required)
+- `CLICKUP_AUTH_PREFIX` (optional, empty for personal token auth; set to `Bearer` if your token type requires it)
+
+Manual testing:
+- Run `Export Processed CSVs to ClickUp` with `dry_run=true` first.
+- Then run with `dry_run=false` to create/update a task and upload all CSV files from `data/processed`.
+
+Task status behavior:
+- Workflow/script tries to set task status to `exported zisson data`.
+- If status does not exist in the target list, task is still created using ClickUp default status.

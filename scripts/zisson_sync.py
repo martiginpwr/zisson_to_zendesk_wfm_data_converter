@@ -45,6 +45,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-timezone", default="UTC")
     parser.add_argument("--first-queue-report", action="store_true")
     parser.add_argument("--api-url", default=API_URL)
+    parser.add_argument(
+        "--skip-state-update",
+        action="store_true",
+        help="Do not update state file even when mode would normally do so.",
+    )
     parser.add_argument("--log-level", default="INFO")
     return parser.parse_args()
 
@@ -391,7 +396,9 @@ def main() -> None:
             "last_successful_end_utc": format_iso_utc(end),
             "updated_at_utc": format_iso_utc(datetime.now(timezone.utc)),
         }
-        if args.queues.strip():
+        if args.skip_state_update:
+            logging.warning("State update disabled by --skip-state-update.")
+        elif args.queues.strip():
             logging.warning("Queue subset run detected; skipping state update to protect global incremental cursor.")
         else:
             save_state(state_path, new_state)
@@ -401,8 +408,13 @@ def main() -> None:
             "last_successful_end_utc": format_iso_utc(end),
             "updated_at_utc": format_iso_utc(datetime.now(timezone.utc)),
         }
-        save_state(state_path, new_state)
-        logging.info("Updated state file after backfill: %s", state_path)
+        if args.skip_state_update:
+            logging.warning("State update disabled by --skip-state-update.")
+        elif args.queues.strip():
+            logging.warning("Queue subset backfill detected; skipping global state update.")
+        else:
+            save_state(state_path, new_state)
+            logging.info("Updated state file after backfill: %s", state_path)
 
 
 if __name__ == "__main__":

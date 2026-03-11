@@ -1,0 +1,72 @@
+﻿name: Test Queue Fetch
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "UTC inclusive start (e.g. 2026-03-01T00:00:00Z)"
+        required: true
+        type: string
+      end_date:
+        description: "UTC exclusive end (e.g. 2026-03-08T00:00:00Z)"
+        required: true
+        type: string
+      queue_selection:
+        description: "Comma-separated queue names or IDs. Empty = all queues"
+        required: false
+        default: ""
+        type: string
+      chunk_days:
+        description: "API chunk size in days"
+        required: false
+        default: "7"
+        type: string
+      source_timezone:
+        description: "Timezone used by interval strings from API (usually UTC)"
+        required: false
+        default: "UTC"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zisson-test
+  cancel-in-progress: true
+
+jobs:
+  test-fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run test extraction
+        env:
+          ZISSON_API_TOKEN: ${{ secrets.ZISSON_API_TOKEN }}
+          ZISSON_AUTH_HEADER: ${{ secrets.ZISSON_AUTH_HEADER }}
+          ZISSON_AUTH_PREFIX: ${{ secrets.ZISSON_AUTH_PREFIX }}
+        run: |
+          python scripts/zisson_sync.py \
+            --mode test \
+            --start-date "${{ inputs.start_date }}" \
+            --end-date "${{ inputs.end_date }}" \
+            --queues "${{ inputs.queue_selection }}" \
+            --chunk-days "${{ inputs.chunk_days }}" \
+            --source-timezone "${{ inputs.source_timezone }}" \
+            --data-dir "artifacts/processed"
+
+      - name: Upload generated CSVs
+        uses: actions/upload-artifact@v4
+        with:
+          name: queue-csv-test-output
+          path: artifacts/processed/*.csv
+          if-no-files-found: error

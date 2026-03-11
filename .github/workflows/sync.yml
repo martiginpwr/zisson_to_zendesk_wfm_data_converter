@@ -1,0 +1,95 @@
+﻿name: Incremental Queue Sync
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Optional UTC inclusive start override"
+        required: false
+        default: ""
+        type: string
+      end_date:
+        description: "Optional UTC exclusive end override"
+        required: false
+        default: ""
+        type: string
+      queue_selection:
+        description: "Comma-separated queue names or IDs. Empty = all queues"
+        required: false
+        default: ""
+        type: string
+      overlap_days:
+        description: "Refetch overlap to capture late corrections"
+        required: false
+        default: "3"
+        type: string
+      retention_days:
+        description: "How much history to keep in each CSV"
+        required: false
+        default: "730"
+        type: string
+      chunk_days:
+        description: "API chunk size in days"
+        required: false
+        default: "7"
+        type: string
+      source_timezone:
+        description: "Timezone used by interval strings from API (usually UTC)"
+        required: false
+        default: "UTC"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zisson-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run incremental sync
+        env:
+          ZISSON_API_TOKEN: ${{ secrets.ZISSON_API_TOKEN }}
+          ZISSON_AUTH_HEADER: ${{ secrets.ZISSON_AUTH_HEADER }}
+          ZISSON_AUTH_PREFIX: ${{ secrets.ZISSON_AUTH_PREFIX }}
+        run: |
+          CMD=(python scripts/zisson_sync.py
+            --mode incremental
+            --queues "${{ inputs.queue_selection }}"
+            --chunk-days "${{ inputs.chunk_days }}"
+            --overlap-days "${{ inputs.overlap_days }}"
+            --retention-days "${{ inputs.retention_days }}"
+            --source-timezone "${{ inputs.source_timezone }}"
+          )
+          if [ -n "${{ inputs.start_date }}" ]; then CMD+=(--start-date "${{ inputs.start_date }}"); fi
+          if [ -n "${{ inputs.end_date }}" ]; then CMD+=(--end-date "${{ inputs.end_date }}"); fi
+          "${CMD[@]}"
+
+      - name: Commit changed files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed state/sync_state.json
+          if git diff --cached --quiet; then
+            echo "No file changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(data): incremental queue sync"
+          git push

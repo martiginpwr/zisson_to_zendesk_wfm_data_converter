@@ -151,7 +151,10 @@ def _opt_env(key: str, default: str) -> str:
     import os
 
     value = os.getenv(key)
-    return value.strip() if value is not None else default
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
 
 
 def chunk_ranges(start: datetime, end: datetime, chunk_days: int) -> Iterable[Tuple[datetime, datetime]]:

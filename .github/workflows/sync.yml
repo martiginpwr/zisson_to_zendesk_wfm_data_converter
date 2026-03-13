@@ -1,4 +1,4 @@
-﻿name: Incremental Queue Sync
+name: Incremental Queue Sync
 
 on:
   schedule:
@@ -67,16 +67,27 @@ jobs:
       - name: Run incremental sync
         env:
           ZISSON_API_TOKEN: ${{ secrets.ZISSON_API_TOKEN }}
-          ZISSON_AUTH_HEADER: ${{ secrets.ZISSON_AUTH_HEADER }}
-          ZISSON_AUTH_PREFIX: ${{ secrets.ZISSON_AUTH_PREFIX }}
+          ZISSON_AUTH_HEADER: ${{ secrets.ZISSON_AUTH_HEADER || 'Authorization' }}
+          ZISSON_AUTH_PREFIX: ${{ secrets.ZISSON_AUTH_PREFIX || 'Bearer' }}
         run: |
+          QUEUE_SELECTION="${{ inputs.queue_selection }}"
+          CHUNK_DAYS="${{ inputs.chunk_days }}"
+          OVERLAP_DAYS="${{ inputs.overlap_days }}"
+          RETENTION_DAYS="${{ inputs.retention_days }}"
+          SOURCE_TZ="${{ inputs.source_timezone }}"
+
+          if [ -z "$CHUNK_DAYS" ]; then CHUNK_DAYS="7"; fi
+          if [ -z "$OVERLAP_DAYS" ]; then OVERLAP_DAYS="3"; fi
+          if [ -z "$RETENTION_DAYS" ]; then RETENTION_DAYS="730"; fi
+          if [ -z "$SOURCE_TZ" ]; then SOURCE_TZ="UTC"; fi
+
           CMD=(python scripts/zisson_sync.py
             --mode incremental
-            --queues "${{ inputs.queue_selection }}"
-            --chunk-days "${{ inputs.chunk_days }}"
-            --overlap-days "${{ inputs.overlap_days }}"
-            --retention-days "${{ inputs.retention_days }}"
-            --source-timezone "${{ inputs.source_timezone }}"
+            --queues "$QUEUE_SELECTION"
+            --chunk-days "$CHUNK_DAYS"
+            --overlap-days "$OVERLAP_DAYS"
+            --retention-days "$RETENTION_DAYS"
+            --source-timezone "$SOURCE_TZ"
           )
           if [ -n "${{ inputs.start_date }}" ]; then CMD+=(--start-date "${{ inputs.start_date }}"); fi
           if [ -n "${{ inputs.end_date }}" ]; then CMD+=(--end-date "${{ inputs.end_date }}"); fi
